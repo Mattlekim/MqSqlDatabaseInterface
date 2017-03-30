@@ -5,13 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 
 using System.Net;
-
-
 namespace MySqlDI
 {
-
-
-
     /// <summary>
     /// a class to handle any and all server interactions
     /// </summary>

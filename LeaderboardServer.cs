@@ -6,7 +6,5 @@ using System.Threading.Tasks;
 
 namespace MySqlDI
 {
-    public class LeaderboardServer : MySqlWebServer
-    {
-    }
+    
 }
