@@ -4,15 +4,17 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using System.Net;
+using System.Net.Http;
+
 namespace MySqlDI
 {
     /// <summary>
     /// a class to handle any and all server interactions
     /// </summary>
-    public class MySqlWebServer
+    public abstract class MySqlWebServer
     {
 
+        protected RequestType _requestType;
         /// <summary>
         /// the name for this database
         /// </summary>
@@ -51,13 +53,13 @@ namespace MySqlDI
         /// <summary>
         /// handles all webrequests
         /// </summary>
-        protected HttpWebRequest _webRequest;
+        protected HttpClient _webRequest;
 
         /// <summary>
         /// the servers url
         /// </summary>
-        protected string _serverUrl;
-        public string ServerUrl;
+        protected string _serverAddress;
+        public string ServerAddress { get { return _serverAddress; } }
 
         /// <summary>
         /// if we are connected to the server or not
@@ -69,14 +71,16 @@ namespace MySqlDI
         /// create the database
         /// </summary>
         /// <param name="serverUrl"></param>
-        public MySqlWebServer(string serverUrl)
+        public MySqlWebServer(string serverUrl, string ServerName)
         {
-            _serverUrl = serverUrl; //set the url
+            _serverAddress = serverUrl; //set the url
+            Name = ServerName;
+            _log += "Server " + Name + " Inizalized!";
         }
 
         
 
-        public void Connect()
+        public async void Connect()
         {
             if (_waitingForRequest) //make sure we can connect
             {
@@ -84,17 +88,21 @@ namespace MySqlDI
                 _log += "Error a webrequest is already active cannot connect to " + Name;
                 return;
             }
+
+            _requestType = RequestType.Connect;
             
-            _webRequest = HttpWebRequest.Create(_serverUrl); //make the web request
-            _webRequest.Method = "GET";
+            _webRequest = new HttpClient(); //make the web request
+            _webRequest.BaseAddress = new Uri(_serverAddress);
+            _webRequest.DefaultRequestHeaders.Accept.Clear();
+            _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
+
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, _serverAddress);
+            
+            
 #if WINDOWS
             phpSender.Timeout = 1000; //windows has an oddity where we need to set the timeout otherwise we will have issues
 #endif
-
-            if (_webRequest.Headers == null)
-                _webRequest.Headers = new WebHeaderCollection();
-
-            _webRequest.BeginGetResponse(OnRequestFullfulled, _serverUrl);
+            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
         }
 
         
@@ -102,27 +110,18 @@ namespace MySqlDI
         /// this is run when the request was compleated sucessfully
         /// </summary>
         /// <param name="result"></param>
-        protected void OnRequestFullfulled(IAsyncResult result, object o)
+        protected void OnRequestFullfulled(HttpResponseMessage result)
         {
             try
             {
-                //get the webpage
-                System.Net.HttpWebResponse response = phpSender.EndGetResponse(result) as System.Net.HttpWebResponse;
+                result.EnsureSuccessStatusCode(); //make sure there is a result
 
-                if (response == null) //if no responce we have an error
-                {
-                    _log += "\n";
-                    _log += "Error no responces from request to " + (string)o; //output error mesage
-                    _waitingForRequest = false;
-                    return;
-                }
-
-                if ((string)o == _serverUrl) //if we were trying to connect to the server
+                if (_requestType == RequestType.Connect) //if we were trying to connect to the server
                 {
                     if (_isConnected) //if we are not connect
                     {
                         _log += "\n";
-                        Log += "Already connect can not connect again";
+                        _log += "Already connect can not connect again";
                     }
                     else
                     {
@@ -132,7 +131,7 @@ namespace MySqlDI
                     }
                     return; //exit as we dont need to decode the page we have connect to
                 }
-                DecodePage(response, (string)o);
+                DecodePage(result);
             }
             catch (Exception x)
             {
@@ -144,8 +143,7 @@ namespace MySqlDI
             _waitingForRequest = false;
         }
 
-        private delegate string DecodePage(HttpWebResponse responce, object o);
-       
+        protected abstract void DecodePage(HttpResponseMessage responce);
 
     }
 
