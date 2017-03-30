@@ -90,11 +90,6 @@ namespace MySqlDI
             _serverAddress = serverUrl; //set the url
             Name = ServerName;
 
-            //set up httpclient
-            _webRequest = new HttpClient();
-            _webRequest.DefaultRequestHeaders.Accept.Clear();
-            _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
-
             _log += "Server " + Name + " Inizalized!";
         }
 
@@ -112,7 +107,7 @@ namespace MySqlDI
             //set the address
         }
 
-        public void Connect()
+        public async void Connect()
         {
             if (_waitingForRequest) //make sure we can connect
             {
@@ -121,9 +116,17 @@ namespace MySqlDI
                 return;
             }
             _waitingForRequest = true; //set the flag
-            _requestType = RequestType.Connect;
             _isConnected = true;
-            SendData(_serverAddress, HttpMethod.Post, new Dictionary<string, string>());
+            _requestType = RequestType.Connect;
+            
+            _webRequest = new HttpClient(); //make the web request
+            _webRequest.BaseAddress = new Uri(_serverAddress);
+            _webRequest.DefaultRequestHeaders.Accept.Clear();
+            _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
+
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, _serverAddress);
+            
+            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
         }
 
         
