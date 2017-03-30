@@ -8,12 +8,13 @@ using System.Net.Http;
 
 namespace MySqlDI
 {
+    public enum RequestType { Connect = 0, SendScore = 1, RetrevieLeaderboard = 2 }
+
     /// <summary>
     /// a class to handle any and all server interactions
     /// </summary>
     public abstract class MySqlWebServer
     {
-
         protected RequestType _requestType;
         /// <summary>
         /// the name for this database
@@ -47,11 +48,11 @@ namespace MySqlDI
         public static int AppBandwidthUsed { get { return _appBandwidthUsed; } }
 
 
-        public delegate void _onErrorConnecting(string log);
-        public _onErrorConnecting OnErrorConnecting;
+        public delegate void _onHTTPFailure(string log);
+        public _onHTTPFailure OnHTTPFailure;
 
-        public delegate void _onReciveRequest(string body);
-        public _onReciveRequest OnReciveRequest;
+        public delegate void __onHTTPSuccesses(string body);
+        public __onHTTPSuccesses OnHTTPSuccesses;
             
         /// <summary>
         /// handles all webrequests
@@ -65,6 +66,10 @@ namespace MySqlDI
         public string ServerAddress { get { return _serverAddress; } }
 
         /// <summary>
+        /// debug option turn it on to output log to output window
+        /// </summary>
+        public bool WriteLogToOutputWindow = false;
+        /// <summary>
         /// if we are connected to the server or not
         /// </summary>
         protected bool _isConnected = false;
@@ -72,12 +77,7 @@ namespace MySqlDI
         {
             get
             {
-                if (_isConnected) //if we are connected return it
-                    return _isConnected; 
-
-                _log += "\n";
-                _log += "Error not connected to server"; //otherwise show error msg and return false
-                return false;
+                return _isConnected;
             }
         }
 
@@ -89,8 +89,8 @@ namespace MySqlDI
         {
             _serverAddress = serverUrl; //set the url
             Name = ServerName;
-
-            _log += "Server " + Name + " Inizalized!";
+            
+            WriteLineToLog("Server " + Name + " Inizalized!");
         }
 
         /// <summary>
@@ -99,34 +99,20 @@ namespace MySqlDI
         /// <param name="address">the web adress</param>
         /// <param name="method">the methord POST or GET</param>
         /// <returns></returns>
-        private HttpRequestMessage CreateWebRequest(string address, HttpMethod method)
+        public HttpRequestMessage CreateWebRequest(string address, HttpMethod method)
         {
             //make the web request
+            _webRequest = new HttpClient(); //inizalize the http client
+
             _webRequest.BaseAddress = new Uri(address);
             return new HttpRequestMessage(method, address);
             //set the address
         }
 
-        public async void Connect()
+        public async Task<bool> Connect()
         {
-            if (_waitingForRequest) //make sure we can connect
-            {
-                _log += "\n"; //add new line
-                _log += "Error a webrequest is already active cannot connect to " + Name;
-                return;
-            }
-            _waitingForRequest = true; //set the flag
-            _isConnected = true;
-            _requestType = RequestType.Connect;
             
-            _webRequest = new HttpClient(); //make the web request
-            _webRequest.BaseAddress = new Uri(_serverAddress);
-            _webRequest.DefaultRequestHeaders.Accept.Clear();
-            _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
-
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, _serverAddress);
-            
-            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
+            return await SendData(_serverAddress, HttpMethod.Post, null, RequestType.Connect);
         }
 
         
@@ -144,19 +130,20 @@ namespace MySqlDI
                 {
                     if (_isConnected) //if we are not connect
                     {
-                        _log += "\n";
-                        _log += "Already connect can not connect again";
-                        if (OnErrorConnecting != null)
-                            OnErrorConnecting(_log);
+                        WriteLineToLog("Already connect can not connect again");
+                        
+                        if (OnHTTPFailure != null)
+                            OnHTTPFailure(_log);
                     }
                     else
                     {
                         _isConnected = true; //sucess
-                        _log += "\n";
-                        _log += "Connected to " + Name;
-                        if (OnErrorConnecting != null)
-                            OnErrorConnecting(_log);
+                        WriteLineToLog("Connected to " + Name);
+                        if (OnHTTPSuccesses != null)
+                            OnHTTPFailure(_log);
                     }
+                    _webRequest.Dispose();
+                    _waitingForRequest = false;
                     return; //exit as we dont need to decode the page we have connect to
                 }
                 PostDecodePage(result);
@@ -164,36 +151,83 @@ namespace MySqlDI
             }
             catch (Exception x)
             {
-                _log += "\n";
-                _log += "========UNHANDLED EXCEPTION=======";
-                _log += x; //output to the log
-                if (OnErrorConnecting != null)
-                    OnErrorConnecting(_log);
+                WriteLineToLog(" ========UNHANDLED EXCEPTION=======\n"+ x); //output to the log
+                if (OnHTTPFailure != null)
+                    OnHTTPFailure(_log);
             }
-
+            _webRequest.Dispose();
             _waitingForRequest = false;
         }
 
         private async void PostDecodePage(HttpResponseMessage result)
         {
             DecodePage(result);
-            if (OnReciveRequest != null)
-                OnReciveRequest(await result.Content.ReadAsStringAsync());
+            if (OnHTTPSuccesses != null)
+                OnHTTPSuccesses(await result.Content.ReadAsStringAsync());
         }
 
-        public abstract object DecodePage(HttpResponseMessage responce);
+        public abstract void DecodePage(HttpResponseMessage responce);
       
         
-        protected async void SendData(string url, HttpMethod method, Dictionary<string, string> data)
+        protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)
         {
-            if (!IsConnected)
-                return; //dont send data
-            
-            HttpRequestMessage request = CreateWebRequest(_serverAddress, method);
-            
-            FormUrlEncodedContent encodedData = new FormUrlEncodedContent(data);
-            request.Content = encodedData;
+            if (!IsConnected && requesttype != RequestType.Connect)
+            {
+                WriteLineToLog("Error you must be connected to server to send data");
+                return false; //dont send data
+            }
+
+            if (_waitingForRequest)
+            {
+                WriteLineToLog("Server is bussy try again later");
+                return false;
+            }
+
+            _waitingForRequest = true;
+
+            _requestType = requesttype; //set the type of request
+            HttpRequestMessage request = CreateWebRequest(url, method);
+
+            if (data != null)
+            {
+                FormUrlEncodedContent encodedData = new FormUrlEncodedContent(data);
+                request.Content = encodedData;
+            }
+            else
+                request.Content = null;
             OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
+            return true;
+        }
+
+        /// <summary>
+        /// writes to the log
+        /// </summary>
+        /// <param name="msg">the text to add to the log</param>
+        protected void WriteToLog(string msg)
+        {
+            if (WriteLogToOutputWindow)
+                System.Diagnostics.Debug.WriteLine(msg);
+            _log += msg;
+        }
+
+        /// <summary>
+        /// writes to the log and creates a new line after it has finised
+        /// </summary>
+        /// <param name="msg">the text to add to the log</param>
+        protected void WriteLineToLog(string msg)
+        {
+            if (WriteLogToOutputWindow)
+                System.Diagnostics.Debug.WriteLine(msg);
+            _log += msg;
+            _log += "\n";
+        }
+
+        /// <summary>
+        /// clears the log
+        /// </summary>
+        protected void ClearLog()
+        {
+            _log = "";
         }
 
     }
