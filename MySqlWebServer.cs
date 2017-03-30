@@ -4,15 +4,17 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using System.Net;
+using System.Net.Http;
+
 namespace MySqlDI
 {
     /// <summary>
     /// a class to handle any and all server interactions
     /// </summary>
-    public class MySqlWebServer
+    public abstract class MySqlWebServer
     {
 
+        protected RequestType _requestType;
         /// <summary>
         /// the name for this database
         /// </summary>
@@ -48,33 +50,67 @@ namespace MySqlDI
         public delegate void _onErrorConnecting(string log);
         public _onErrorConnecting OnErrorConnecting;
 
+        public delegate void _onReciveRequest(string body);
+        public _onReciveRequest OnReciveRequest;
+            
         /// <summary>
         /// handles all webrequests
         /// </summary>
-        protected HttpWebRequest _webRequest;
+        protected HttpClient _webRequest;
 
         /// <summary>
         /// the servers url
         /// </summary>
-        protected string _serverUrl;
-        public string ServerUrl;
+        protected string _serverAddress;
+        public string ServerAddress { get { return _serverAddress; } }
 
         /// <summary>
         /// if we are connected to the server or not
         /// </summary>
         protected bool _isConnected = false;
-        public bool IsConnected {  get { return _isConnected; } }
+        public bool IsConnected
+        {
+            get
+            {
+                if (_isConnected) //if we are connected return it
+                    return _isConnected; 
+
+                _log += "\n";
+                _log += "Error not connected to server"; //otherwise show error msg and return false
+                return false;
+            }
+        }
 
         /// <summary>
         /// create the database
         /// </summary>
         /// <param name="serverUrl"></param>
-        public MySqlWebServer(string serverUrl)
+        public MySqlWebServer(string serverUrl, string ServerName)
         {
-            _serverUrl = serverUrl; //set the url
+            _serverAddress = serverUrl; //set the url
+            Name = ServerName;
+
+            //set up httpclient
+            _webRequest = new HttpClient();
+            _webRequest.DefaultRequestHeaders.Accept.Clear();
+            _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
+
+            _log += "Server " + Name + " Inizalized!";
         }
 
-        
+        /// <summary>
+        /// creates a http request
+        /// </summary>
+        /// <param name="address">the web adress</param>
+        /// <param name="method">the methord POST or GET</param>
+        /// <returns></returns>
+        private HttpRequestMessage CreateWebRequest(string address, HttpMethod method)
+        {
+            //make the web request
+            _webRequest.BaseAddress = new Uri(address);
+            return new HttpRequestMessage(method, address);
+            //set the address
+        }
 
         public void Connect()
         {
@@ -84,17 +120,10 @@ namespace MySqlDI
                 _log += "Error a webrequest is already active cannot connect to " + Name;
                 return;
             }
-            
-            _webRequest = HttpWebRequest.Create(_serverUrl); //make the web request
-            _webRequest.Method = "GET";
-#if WINDOWS
-            phpSender.Timeout = 1000; //windows has an oddity where we need to set the timeout otherwise we will have issues
-#endif
-
-            if (_webRequest.Headers == null)
-                _webRequest.Headers = new WebHeaderCollection();
-
-            _webRequest.BeginGetResponse(OnRequestFullfulled, _serverUrl);
+            _waitingForRequest = true; //set the flag
+            _requestType = RequestType.Connect;
+            _isConnected = true;
+            SendData(_serverAddress, HttpMethod.Post, new Dictionary<string, string>());
         }
 
         
@@ -102,50 +131,67 @@ namespace MySqlDI
         /// this is run when the request was compleated sucessfully
         /// </summary>
         /// <param name="result"></param>
-        protected void OnRequestFullfulled(IAsyncResult result, object o)
+        protected void OnRequestFullfulled(HttpResponseMessage result)
         {
             try
             {
-                //get the webpage
-                System.Net.HttpWebResponse response = phpSender.EndGetResponse(result) as System.Net.HttpWebResponse;
+                result.EnsureSuccessStatusCode(); //make sure there is a result
 
-                if (response == null) //if no responce we have an error
-                {
-                    _log += "\n";
-                    _log += "Error no responces from request to " + (string)o; //output error mesage
-                    _waitingForRequest = false;
-                    return;
-                }
-
-                if ((string)o == _serverUrl) //if we were trying to connect to the server
+                if (_requestType == RequestType.Connect) //if we were trying to connect to the server
                 {
                     if (_isConnected) //if we are not connect
                     {
                         _log += "\n";
-                        Log += "Already connect can not connect again";
+                        _log += "Already connect can not connect again";
+                        if (OnErrorConnecting != null)
+                            OnErrorConnecting(_log);
                     }
                     else
                     {
                         _isConnected = true; //sucess
                         _log += "\n";
                         _log += "Connected to " + Name;
+                        if (OnErrorConnecting != null)
+                            OnErrorConnecting(_log);
                     }
                     return; //exit as we dont need to decode the page we have connect to
                 }
-                DecodePage(response, (string)o);
+                PostDecodePage(result);
+                
             }
             catch (Exception x)
             {
                 _log += "\n";
                 _log += "========UNHANDLED EXCEPTION=======";
                 _log += x; //output to the log
+                if (OnErrorConnecting != null)
+                    OnErrorConnecting(_log);
             }
 
             _waitingForRequest = false;
         }
 
-        private delegate string DecodePage(HttpWebResponse responce, object o);
-       
+        private async void PostDecodePage(HttpResponseMessage result)
+        {
+            DecodePage(result);
+            if (OnReciveRequest != null)
+                OnReciveRequest(await result.Content.ReadAsStringAsync());
+        }
+
+        public abstract object DecodePage(HttpResponseMessage responce);
+      
+        
+        protected async void SendData(string url, HttpMethod method, Dictionary<string, string> data)
+        {
+            if (!IsConnected)
+                return; //dont send data
+            
+            HttpRequestMessage request = CreateWebRequest(_serverAddress, method);
+            
+            FormUrlEncodedContent encodedData = new FormUrlEncodedContent(data);
+            request.Content = encodedData;
+            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
+        }
 
     }
 
