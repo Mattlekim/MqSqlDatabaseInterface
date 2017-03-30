@@ -89,12 +89,15 @@ namespace MySqlDI
         {
             _serverAddress = serverUrl; //set the url
             Name = ServerName;
+<<<<<<< HEAD
 
             //set up httpclient
             _webRequest = new HttpClient();
             _webRequest.DefaultRequestHeaders.Accept.Clear();
             _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
 
+=======
+>>>>>>> development
             _log += "Server " + Name + " Inizalized!";
         }
 
@@ -112,7 +115,7 @@ namespace MySqlDI
             //set the address
         }
 
-        public void Connect()
+        public async void Connect()
         {
             if (_waitingForRequest) //make sure we can connect
             {
@@ -120,10 +123,28 @@ namespace MySqlDI
                 _log += "Error a webrequest is already active cannot connect to " + Name;
                 return;
             }
+<<<<<<< HEAD
             _waitingForRequest = true; //set the flag
             _requestType = RequestType.Connect;
             _isConnected = true;
             SendData(_serverAddress, HttpMethod.Post, new Dictionary<string, string>());
+=======
+
+            _requestType = RequestType.Connect;
+            
+            _webRequest = new HttpClient(); //make the web request
+            _webRequest.BaseAddress = new Uri(_serverAddress);
+            _webRequest.DefaultRequestHeaders.Accept.Clear();
+            _webRequest.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/php"));
+
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, _serverAddress);
+            
+            
+#if WINDOWS
+            phpSender.Timeout = 1000; //windows has an oddity where we need to set the timeout otherwise we will have issues
+#endif
+            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
+>>>>>>> development
         }
 
         
@@ -143,8 +164,11 @@ namespace MySqlDI
                     {
                         _log += "\n";
                         _log += "Already connect can not connect again";
+<<<<<<< HEAD
                         if (OnErrorConnecting != null)
                             OnErrorConnecting(_log);
+=======
+>>>>>>> development
                     }
                     else
                     {
@@ -156,8 +180,12 @@ namespace MySqlDI
                     }
                     return; //exit as we dont need to decode the page we have connect to
                 }
+<<<<<<< HEAD
                 PostDecodePage(result);
                 
+=======
+                DecodePage(result);
+>>>>>>> development
             }
             catch (Exception x)
             {
@@ -171,6 +199,7 @@ namespace MySqlDI
             _waitingForRequest = false;
         }
 
+<<<<<<< HEAD
         private async void PostDecodePage(HttpResponseMessage result)
         {
             DecodePage(result);
@@ -192,6 +221,9 @@ namespace MySqlDI
             request.Content = encodedData;
             OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
         }
+=======
+        protected abstract void DecodePage(HttpResponseMessage responce);
+>>>>>>> development
 
     }
 
