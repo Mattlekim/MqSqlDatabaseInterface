@@ -8,6 +8,9 @@ using System.Net.Http;
 
 namespace MySqlDI
 {
+    /// <summary>
+    /// used to keep track of what type of request the server has issued
+    /// </summary>
     public enum RequestType { Connect = 0, SendScore = 1, RetrevieLeaderboard = 2 }
 
     /// <summary>
@@ -15,6 +18,14 @@ namespace MySqlDI
     /// </summary>
     public abstract class MySqlWebServer
     {
+        /// <summary>
+        /// wether the server requires authentication or not
+        /// </summary>
+        private bool _requireAuthentication;
+
+        /// <summary>
+        /// the type of request
+        /// </summary>
         protected RequestType _requestType;
         /// <summary>
         /// the name for this database
@@ -51,7 +62,7 @@ namespace MySqlDI
         public delegate void _onHTTPFailure(string log);
         public _onHTTPFailure OnHTTPFailure;
 
-        public delegate void __onHTTPSuccesses(string body);
+        public delegate void __onHTTPSuccesses(object o);
         public __onHTTPSuccesses OnHTTPSuccesses;
             
         /// <summary>
@@ -85,8 +96,9 @@ namespace MySqlDI
         /// create the database
         /// </summary>
         /// <param name="serverUrl"></param>
-        public MySqlWebServer(string serverUrl, string ServerName)
+        public MySqlWebServer(string serverUrl, string ServerName, bool requireauthentication)
         {
+            _requireAuthentication = requireauthentication;
             _serverAddress = serverUrl; //set the url
             Name = ServerName;
             
@@ -111,8 +123,13 @@ namespace MySqlDI
 
         public async Task<bool> Connect()
         {
-            
-            return await SendData(_serverAddress, HttpMethod.Post, null, RequestType.Connect);
+            if (_requireAuthentication)
+                return await SendData(_serverAddress, HttpMethod.Post, null, RequestType.Connect);
+            else
+            {
+                _isConnected = true;
+                return false;
+            }
         }
 
         
@@ -161,12 +178,12 @@ namespace MySqlDI
 
         private async void PostDecodePage(HttpResponseMessage result)
         {
-            DecodePage(result);
+            object o = DecodePage(result);
             if (OnHTTPSuccesses != null)
-                OnHTTPSuccesses(await result.Content.ReadAsStringAsync());
+                OnHTTPSuccesses(o);
         }
 
-        public abstract void DecodePage(HttpResponseMessage responce);
+        public abstract object DecodePage(HttpResponseMessage responce);
       
         
         protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)

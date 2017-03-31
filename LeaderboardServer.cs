@@ -9,6 +9,12 @@ using System.IO;
 namespace MySqlDI
 {
    
+    public struct HighScore
+    {
+        public string Name, Id;
+        public int Score;
+    }
+
     public class LeaderboardServer : MySqlWebServer
     {
         #region bad word list
@@ -18,7 +24,7 @@ namespace MySqlDI
 
         public string GetLeaderboardUrl;
 
-        public LeaderboardServer(string serverUrl, string ServerName) : base(serverUrl, ServerName)
+        public LeaderboardServer(string serverUrl, string ServerName, bool requireauthentication) : base(serverUrl, ServerName, requireauthentication)
         {
         }
 
@@ -34,7 +40,7 @@ namespace MySqlDI
             SendData(GetLeaderboardUrl, HttpMethod.Post, data, RequestType.SendScore);
         }
 
-        public override void DecodePage(HttpResponseMessage responce)
+        public override object DecodePage(HttpResponseMessage responce)
         {
             string htmlPage = responce.Content.ReadAsStringAsync().Result;
 
@@ -45,17 +51,19 @@ namespace MySqlDI
             }
 
             //now we decode the results
-            List<String> Names = new List<string>();
-            List<int> Scores = new List<int>();
-            List<string> Id = new List<string>();
+            List<HighScore> scores = new List<HighScore>();
+            HighScore tmpScore;
             //now we need to get every score from the scoreboard and add them to the list
+            bool addscore = false;
+            tmpScore = new HighScore();
             for (int i = 0; i < htmlPage.Length; i++)
             {
+                
                 if (htmlPage[i] == '^')
                     for (int counter = i + 1; counter < i + 50 && counter < htmlPage.Length; counter++)
                         if (htmlPage[counter] == '^')//look for the end of the score
                         {
-                            Scores.Add(Convert.ToInt32(htmlPage.Substring(i + 1, counter - i - 1)));
+                            tmpScore.Score = Convert.ToInt32(htmlPage.Substring(i + 1, counter - i - 1));
                             i = counter + 6;
                             break;
                         }
@@ -71,11 +79,25 @@ namespace MySqlDI
                                 if (tmp2.Contains(s))
                                     tmp2 = tmp2.Replace(s, "**");
                             }
-                            Names.Add(tmp2);
+                            tmpScore.Name = tmp2;
+                            addscore = true;
                             i = counter + 6;
+                            
                             break;
                         }
+
+                if (addscore)
+                {
+                    scores.Add(tmpScore);
+                    addscore = false;
+                    tmpScore.Name = null;
+                    tmpScore.Score = 0;
+                }
+                
+
             }
+
+            return scores;
         }
     }
 
