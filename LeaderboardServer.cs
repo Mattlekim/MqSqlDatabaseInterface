@@ -40,7 +40,7 @@ namespace MySqlDI
             SendData(GetLeaderboardUrl, HttpMethod.Post, data, RequestType.SendScore);
         }
 
-        public override object DecodePage(HttpResponseMessage responce)
+        public override void DecodePage(HttpResponseMessage responce)
         {
             string htmlPage = responce.Content.ReadAsStringAsync().Result;
 

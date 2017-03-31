@@ -8,6 +8,8 @@ using System.Net.Http;
 
 namespace MySqlDI
 {
+    public enum RequestType { Connect = 0, SendScore = 1, RetrevieLeaderboard = 2 }
+
     /// <summary>
     /// used to keep track of what type of request the server has issued
     /// </summary>
@@ -183,7 +185,7 @@ namespace MySqlDI
                 OnHTTPSuccesses(o);
         }
 
-        public abstract object DecodePage(HttpResponseMessage responce);
+        public abstract void DecodePage(HttpResponseMessage responce);
       
         
         protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)
