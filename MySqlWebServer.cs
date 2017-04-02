@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using System.Net.Http;
+using System.Net;
 
 namespace MySqlDI
 {
@@ -19,6 +20,8 @@ namespace MySqlDI
     /// </summary>
     public abstract class MySqlWebServer
     {
+        private CookieContainer cookie = new CookieContainer();
+
         /// <summary>
         /// a dictionary of error messeges and there releative enums
         /// </summary>
@@ -27,11 +30,6 @@ namespace MySqlDI
             { "login required", ErrorTypes.NotLogedIn },
             { "error to be defined", ErrorTypes.InvalidRequest },
         };
-
-        /// <summary>
-        /// wether the server requires authentication or not
-        /// </summary>
-        private bool _requireAuthentication;
 
         /// <summary>
         /// the type of request
@@ -74,7 +72,10 @@ namespace MySqlDI
 
         public delegate void __onHTTPSuccesses(object o);
         public __onHTTPSuccesses OnHTTPSuccesses;
-            
+
+
+        protected HttpClientHandler _webHandler;
+
         /// <summary>
         /// handles all webrequests
         /// </summary>
@@ -106,11 +107,18 @@ namespace MySqlDI
         /// create the database
         /// </summary>
         /// <param name="serverUrl"></param>
-        public MySqlWebServer(string serverUrl, string ServerName, bool requireauthentication)
+        public MySqlWebServer(string serverUrl, string ServerName)
         {
-            _requireAuthentication = requireauthentication;
             _serverAddress = serverUrl; //set the url
             Name = ServerName;
+            //make the web request
+            _webHandler = new HttpClientHandler()
+            {
+                UseCookies = true,
+                UseDefaultCredentials = false,
+                CookieContainer = cookie,
+            };
+            _webRequest = new HttpClient(_webHandler); //inizalize the http client
             
             WriteLineToLog("Server " + Name + " Inizalized!");
         }
@@ -123,23 +131,20 @@ namespace MySqlDI
         /// <returns></returns>
         public HttpRequestMessage CreateWebRequest(string address, HttpMethod method)
         {
-            //make the web request
-            _webRequest = new HttpClient(); //inizalize the http client
 
-            _webRequest.BaseAddress = new Uri(address);
+            
             return new HttpRequestMessage(method, address);
             //set the address
         }
 
-        public async Task<bool> Connect()
+        public virtual async Task<bool> Login(string username)
         {
-            if (_requireAuthentication)
-                return await SendData(_serverAddress, HttpMethod.Post, null, RequestType.Connect);
-            else
+            Dictionary<string, string> data = new Dictionary<string, string>()
             {
-                _isConnected = true;
-                return false;
-            }
+                {"username", username },
+            };
+            _webRequest.BaseAddress = new Uri(_serverAddress);
+            return await SendData(_serverAddress, HttpMethod.Post, data, RequestType.Connect);
         }
 
         
@@ -169,10 +174,11 @@ namespace MySqlDI
                         if (OnHTTPSuccesses != null)
                             OnHTTPFailure(_log);
                     }
-                    _webRequest.Dispose();
+
                     _waitingForRequest = false;
                     return; //exit as we dont need to decode the page we have connect to
                 }
+               
                 PostDecodePage(result);
                 
             }
@@ -182,7 +188,6 @@ namespace MySqlDI
                 if (OnHTTPFailure != null)
                     OnHTTPFailure(_log);
             }
-            _webRequest.Dispose();
             _waitingForRequest = false;
         }
 
@@ -210,7 +215,7 @@ namespace MySqlDI
 
         public abstract object DecodePage(HttpResponseMessage responce);
       
-        public abstract void OnPageError(ErrorTypes error);
+        public abstract void OnPageError(ErrorTypes error);    
 
         protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)
         {
@@ -225,12 +230,12 @@ namespace MySqlDI
                 WriteLineToLog("Server is bussy try again later");
                 return false;
             }
-
+            
             _waitingForRequest = true;
 
             _requestType = requesttype; //set the type of request
             HttpRequestMessage request = CreateWebRequest(url, method);
-
+            
             if (data != null)
             {
                 FormUrlEncodedContent encodedData = new FormUrlEncodedContent(data);
