@@ -13,12 +13,12 @@ namespace webserver_test
         static LeaderboardServer server;
         static void Main(string[] args)
         {
-            server = new LeaderboardServer("", "Leaderboard Server", false);
+            server = new LeaderboardServer("http://riddlersoftgames.co.uk/database/osrh2h/login.php", "Leaderboard Server");
             server.GetLeaderboardUrl = "http://riddlersoftgames.co.uk/database/osrh2h/osr2leaderboards2.php";
             server.WriteLogToOutputWindow = true;
             server.OnHTTPSuccesses = OnGetLeaderBoard;
             server.OnHTTPFailure = OnServerError;
-            var r = server.Connect().Result;
+            var r = server.Login("any name").Result;
             
             server.GetLeaderBoard("lb0", LeaderboardServer.SortOrder.Desending);
             Console.ReadKey();

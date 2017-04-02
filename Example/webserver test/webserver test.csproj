@@ -49,7 +49,7 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\OneDrive\Programming\Old School Racer 2 Head To Head\MqSqlDatabaseInterface\MySqlDatabseInterface.csproj">
+    <ProjectReference Include="..\..\MySqlDatabseInterface.csproj">
       <Project>{e55ebcad-5da2-4912-89f2-d0046fb2e43c}</Project>
       <Name>MySqlDatabseInterface</Name>
     </ProjectReference>

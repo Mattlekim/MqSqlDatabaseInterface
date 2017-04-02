@@ -5,7 +5,7 @@ VisualStudioVersion = 15.0.26228.9
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "webserver test", "webserver test\webserver test.csproj", "{D53E4E05-DABB-4800-8A8B-02B1BB3623FB}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MySqlDatabseInterface", "..\..\..\..\OneDrive\Programming\Old School Racer 2 Head To Head\MqSqlDatabaseInterface\MySqlDatabseInterface.csproj", "{E55EBCAD-5DA2-4912-89F2-D0046FB2E43C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MySqlDatabseInterface", "..\MySqlDatabseInterface.csproj", "{E55EBCAD-5DA2-4912-89F2-D0046FB2E43C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
