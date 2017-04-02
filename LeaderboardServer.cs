@@ -24,7 +24,7 @@ namespace MySqlDI
 
         public string GetLeaderboardUrl;
 
-        public LeaderboardServer(string serverUrl, string ServerName, bool requireauthentication) : base(serverUrl, ServerName, requireauthentication)
+        public LeaderboardServer(string serverUrl, string ServerName) : base(serverUrl, ServerName)
         {
         }
 
@@ -98,6 +98,11 @@ namespace MySqlDI
             }
 
             return scores;
+        }
+
+        public override void OnPageError(ErrorTypes error)
+        {
+            
         }
     }
 
