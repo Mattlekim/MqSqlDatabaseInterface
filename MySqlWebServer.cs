@@ -13,11 +13,21 @@ namespace MySqlDI
     /// </summary>
     public enum RequestType { Connect = 0, SendScore = 1, RetrevieLeaderboard = 2 }
 
+    public enum ErrorTypes { NotLogedIn, InvalidRequest, None, Unknownen}
     /// <summary>
     /// a class to handle any and all server interactions
     /// </summary>
     public abstract class MySqlWebServer
     {
+        /// <summary>
+        /// a dictionary of error messeges and there releative enums
+        /// </summary>
+        private Dictionary<string, ErrorTypes> _errorList = new Dictionary<string, ErrorTypes>()
+        {
+            { "login required", ErrorTypes.NotLogedIn },
+            { "error to be defined", ErrorTypes.InvalidRequest },
+        };
+
         /// <summary>
         /// wether the server requires authentication or not
         /// </summary>
@@ -181,11 +191,27 @@ namespace MySqlDI
             object o = DecodePage(result);
             if (OnHTTPSuccesses != null)
                 OnHTTPSuccesses(o);
+
+            //check for error
+            string tmp = await result.Content.ReadAsStringAsync();
+            int i = tmp.IndexOf("#error-=#");
+            if (i >= 0) //if error
+            {
+                i += 9;
+                tmp = tmp.Substring(i, tmp.Length - i);
+                ErrorTypes errmsg = ErrorTypes.None;
+                if (_errorList.ContainsKey(tmp))
+                    errmsg = _errorList[tmp];
+                else
+                    errmsg = ErrorTypes.Unknownen;
+                OnPageError(errmsg);
+            }
         }
 
         public abstract object DecodePage(HttpResponseMessage responce);
       
-        
+        public abstract void OnPageError(ErrorTypes error);
+
         protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)
         {
             if (!IsConnected && requesttype != RequestType.Connect)

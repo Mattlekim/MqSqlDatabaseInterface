@@ -99,6 +99,11 @@ namespace MySqlDI
 
             return scores;
         }
+
+        public override void OnPageError(ErrorTypes error)
+        {
+            
+        }
     }
 
 }

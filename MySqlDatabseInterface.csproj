@@ -6,4 +6,10 @@
     <RootNamespace>MySqlDI</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="Example\**" />
+    <EmbeddedResource Remove="Example\**" />
+    <None Remove="Example\**" />
+  </ItemGroup>
+
 </Project>
