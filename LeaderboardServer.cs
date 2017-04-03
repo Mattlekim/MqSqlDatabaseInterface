@@ -17,8 +17,8 @@ namespace MySqlDI
 
     public class LeaderboardServer : MySqlWebServer
     {
-        #region bad word list
-        private static List<string> FilterList = new List<string>() { "fuking", "fuk", "fucking", "fuck", "shit", "bitch", "wancker" };
+        #region bad word list enter you own words
+        private static List<string> FilterList = new List<string>() {  };
         #endregion
         public enum SortOrder { Assending = 0, Desending = 1 };
 
@@ -37,65 +37,40 @@ namespace MySqlDI
                 { "sortby" , Convert.ToString(((int)sortby)) }
             };
 
+            ///this is fine we want senddata to run aysnc
             SendData(GetLeaderboardUrl, HttpMethod.Post, data, RequestType.SendScore);
         }
 
-        public override object DecodePage(HttpResponseMessage responce)
-        {
-            string htmlPage = responce.Content.ReadAsStringAsync().Result;
+        
 
+        public override object DecodePage(HttpResponseMessage responce, string htmlPage)
+        {
             if (htmlPage.Length < 360) //make sure the page has some text
             {
                 int start = htmlPage.IndexOf("<body>") + 6; 
                 WriteLineToLog(htmlPage.Substring(start, htmlPage.Length - start)); //out error msg
             }
 
+            Dictionary<string, List<string>> database = MySqlWebServer.DecodeMySqlDatabase(htmlPage);
+
+            List<string> names, ids, score;
+            names = database["name"];
+            ids = database["id"];
+            score = database["Score"];
+
             //now we decode the results
             List<HighScore> scores = new List<HighScore>();
-            HighScore tmpScore;
-            //now we need to get every score from the scoreboard and add them to the list
-            bool addscore = false;
-            tmpScore = new HighScore();
-            for (int i = 0; i < htmlPage.Length; i++)
-            {
-                
-                if (htmlPage[i] == '^')
-                    for (int counter = i + 1; counter < i + 50 && counter < htmlPage.Length; counter++)
-                        if (htmlPage[counter] == '^')//look for the end of the score
-                        {
-                            tmpScore.Score = Convert.ToInt32(htmlPage.Substring(i + 1, counter - i - 1));
-                            i = counter + 6;
-                            break;
-                        }
 
-                if (htmlPage[i] == '#')
-                    for (int counter = i + 1; counter < i + 50 && counter < htmlPage.Length; counter++)
-                        if (htmlPage[counter] == '#')//look for the end of the id
-                        {
-
-                            string tmp2 = htmlPage.Substring(i + 1, counter - i - 1).ToLower();
-                            foreach (string s in FilterList)
-                            {
-                                if (tmp2.Contains(s))
-                                    tmp2 = tmp2.Replace(s, "**");
-                            }
-                            tmpScore.Name = tmp2;
-                            addscore = true;
-                            i = counter + 6;
-                            
-                            break;
-                        }
-
-                if (addscore)
+            for (int i = 0; i < names.Count; i++)
+                scores.Add(new HighScore()
                 {
-                    scores.Add(tmpScore);
-                    addscore = false;
-                    tmpScore.Name = null;
-                    tmpScore.Score = 0;
-                }
+                    Name = names[i],
+                    Id = ids[i],
+                    Score = Convert.ToInt32(score[i]),
+                });
                 
 
-            }
+            
 
             return scores;
         }
