@@ -18,26 +18,51 @@ else
 	die("#error-=#login required"); //KILL PAGE
 }
 
-
-//database logins
-$powerUserName = "";
-$powerUserPassword = "";
-
-$normalUserName = "";
-$normalUserName = "";
-
-//set to normal user
-$dbUserName = $normalUserName;
-$dbPassword = $normalUserPassword;
-
-if ($_SESSION['PowerUser'] == true) //if we are a poweruser
+$dbUserName; 
+$dbPassword; 
+$database;
+function GetCredentials($type, $db)
 {
-	$dbUserName = $powerUserName;
-	$dbPassword = $powerUserPassword;
+	global $dbUserName;
+	global $dbPassword;
+	global $database; 
+	//database logins
+	$powerUserName = "";
+	$powerPassword = "";
+
+	//view credentials
+	$dbUserName = "view user name";
+	$dbPassword = "view passord";
+
+	
+	$database = $db;
+
+	if ($_SESSION['PowerUser'] == true) //if we are a poweruser
+	{
+		$dbUserName = $powerUserName;
+	    $dbPassword = $powerPassword;
+	}
+	else
+		if ($type == "add")
+		{
+			//add credentials
+			$dbUserName = "add score username";
+		    $dbPassword = "add score password";
+		}
 }
 
-//if all is well connect to database
-mysql_connect("localhost", $dbUserName, $dbPassword) or die("did not connect");
 
-mysql_select_db("enter database name") or die(mysql_error());
+function Connect()
+{
+	global $dbUserName;
+	global $dbPassword;
+	global $database;
+
+	//if all is well connect to database
+	mysql_connect("localhost", $dbUserName , $dbPassword) or die("did not connect");
+
+	mysql_select_db($database) or die(mysql_error());
+}
 ?>
+
+

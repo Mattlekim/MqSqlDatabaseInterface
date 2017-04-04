@@ -4,6 +4,10 @@ $leaderboard = $_POST["leaderboard"];
 
 $sortby = $_POST["sortby"];		
 
+$database = "database name";
+GetCredentials("add", $database); //get credentials for the database
+Connect();  //connect to the database
+
 
 ?>
 
@@ -36,7 +40,7 @@ echo "<h1>".$leaderboard." Leaderboard</h1>".$sortby;
 
 echo "<table border='1'>";
 
-echo "<tr> <th>Score</th> <th>Data</th></tr>";
+echo "<tr> <th>Score</th> <th>name</th> <th>id</th></tr>";
 
 // keeps getting the next row until there are no more to get
 
@@ -51,35 +55,22 @@ else
 	while($row = mysql_fetch_array( $result )) 
 
 	{
-
 		// Print out the contents of each row into a table
-
 		$count++;
-
 		if ($count == 2)
 
 			$count = 0;
 
-			
+		echo "<tr><td>"; 
 
-	
-
-	
-
-		echo "</td><td>"; 
-
-		echo "^";echo $row['Score'];echo "^";
-
+		echo $row['Score'];
 		echo "</td><td>";
 
-		echo "#";echo $row['Id'];echo "#";
-
+		echo $row['Name'];
+		echo "</td><td>";
+		
+	    echo $row['Id'];
 		echo "</td></tr>"; 
-
-		
-
-		
-
 	} 
 
 
