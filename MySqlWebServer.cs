@@ -12,7 +12,7 @@ namespace MySqlDI
     /// <summary>
     /// used to keep track of what type of request the server has issued
     /// </summary>
-    public enum RequestType { Connect = 0, SendScore = 1, RetrevieLeaderboard = 2 }
+    public enum RequestType { Login = 0, Normal = 1 }
 
     public enum ErrorTypes { NotLogedIn, InvalidRequest, None, Unknownen}
     /// <summary>
@@ -47,7 +47,7 @@ namespace MySqlDI
         /// weather any webserver is currently waiting for a request or not
         /// </summary>
         private static bool _waitingForRequest;
-        public static bool WatingForRequest { get { return _waitingForRequest; } }
+        public bool WatingForRequest { get { return _waitingForRequest; } }
 
         /// <summary>
         /// keeps a log of all activity
@@ -82,6 +82,13 @@ namespace MySqlDI
         /// <param name="o"></param>
         public delegate void __onHTTPSuccesses(object o);
         public __onHTTPSuccesses OnHTTPSuccesses;
+
+        /// <summary>
+        /// this fires when the page loads successfully
+        /// </summary>
+        /// <param name="o"></param>
+        public delegate void __onLoginSuccess(object o);
+        public __onLoginSuccess OnLoginSuccess;
 
 
         protected HttpClientHandler _webHandler;
@@ -171,7 +178,7 @@ namespace MySqlDI
                 {"username", username },
             };
             _webRequest.BaseAddress = new Uri(_serverAddress);
-            return await SendData(_serverAddress, HttpMethod.Post, data, RequestType.Connect);
+            return await SendData(_serverAddress, HttpMethod.Post, data, RequestType.Login, null);
         }
 
         
@@ -179,13 +186,13 @@ namespace MySqlDI
         /// this is run when the request was compleated sucessfully
         /// </summary>
         /// <param name="result"></param>
-        protected void OnRequestFullfulled(HttpResponseMessage result)
+        protected void OnRequestFullfulled(HttpResponseMessage result, object mydata)
         {
             try
             {
                 result.EnsureSuccessStatusCode(); //make sure there is a result
 
-                if (_requestType == RequestType.Connect) //if we were trying to connect to the server
+                if (_requestType == RequestType.Login) //if we were trying to connect to the server
                 {
                     if (_isConnected) //if we are not connect
                     {
@@ -198,15 +205,15 @@ namespace MySqlDI
                     {
                         _isConnected = true; //sucess
                         WriteLineToLog("Connected to " + Name);
-                        if (OnHTTPSuccesses != null)
-                            OnHTTPFailure(_log);
+                        if (OnLoginSuccess != null)
+                            OnLoginSuccess(_log);
                     }
 
                     _waitingForRequest = false;
                     return; //exit as we dont need to decode the page we have connect to
                 }
                
-                PreDecodePage(result);
+                PreDecodePage(result, mydata);
                 
             }
             catch (Exception x)
@@ -224,7 +231,7 @@ namespace MySqlDI
         /// start the prossesing of the receved web page
         /// </summary>
         /// <param name="result"></param>
-        private async void PreDecodePage(HttpResponseMessage result)
+        private async void PreDecodePage(HttpResponseMessage result, object mydata)
         {
             string page = await result.Content.ReadAsStringAsync(); //get the page
             UpdateUsedBandwidth(page); //update bandwith used
@@ -244,7 +251,7 @@ namespace MySqlDI
             }
             else
             {
-                object o = DecodePage(result, page); //decode the page
+                object o = DecodePage(result, page, mydata); //decode the page
                 if (OnHTTPSuccesses != null)
                     OnHTTPSuccesses(o);
             }
@@ -256,7 +263,7 @@ namespace MySqlDI
         /// <param name="responce">the http responce from the server</param>
         /// <param name="htmlPage">a string containing the webpage</param>
         /// <returns></returns>
-        public abstract object DecodePage(HttpResponseMessage responce, string htmlPage);
+        public abstract object DecodePage(HttpResponseMessage responce, string htmlPage, object mydata);
       
         /// <summary>
         /// handles page errors
@@ -272,9 +279,9 @@ namespace MySqlDI
         /// <param name="data">the data to send</param>
         /// <param name="requesttype">the request type</param>
         /// <returns></returns>
-        protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)
+        protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype, object mydata)
         {
-            if (!IsConnected && requesttype != RequestType.Connect)
+            if (!IsConnected && requesttype != RequestType.Login)
             {
                 WriteLineToLog("Error you must be connected to server to send data");
                 return false; //dont send data
@@ -298,7 +305,7 @@ namespace MySqlDI
             }
             else
                 request.Content = null;
-            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
+            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead), mydata); //get the result
             return true;
         }
 
