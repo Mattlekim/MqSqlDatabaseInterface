@@ -12,7 +12,7 @@ namespace MySqlDI
     /// <summary>
     /// used to keep track of what type of request the server has issued
     /// </summary>
-    public enum RequestType { Connect = 0, SendScore = 1, RetrevieLeaderboard = 2 }
+    public enum RequestType { Login = 0, Normal = 1 }
 
     public enum ErrorTypes { NotLogedIn, InvalidRequest, None, Unknownen}
     /// <summary>
@@ -20,6 +20,9 @@ namespace MySqlDI
     /// </summary>
     public abstract class MySqlWebServer
     {
+        /// <summary>
+        /// keeps track of cookies
+        /// </summary>
         private CookieContainer cookie = new CookieContainer();
 
         /// <summary>
@@ -44,7 +47,7 @@ namespace MySqlDI
         /// weather any webserver is currently waiting for a request or not
         /// </summary>
         private static bool _waitingForRequest;
-        public static bool WatingForRequest { get { return _waitingForRequest; } }
+        public bool WatingForRequest { get { return _waitingForRequest; } }
 
         /// <summary>
         /// keeps a log of all activity
@@ -66,12 +69,26 @@ namespace MySqlDI
         protected static int _appBandwidthUsed;
         public static int AppBandwidthUsed { get { return _appBandwidthUsed; } }
 
-
+        /// <summary>
+        /// this will fire when there is a problem loading the page
+        /// </summary>
+        /// <param name="log"></param>
         public delegate void _onHTTPFailure(string log);
         public _onHTTPFailure OnHTTPFailure;
 
+        /// <summary>
+        /// this fires when the page loads successfully
+        /// </summary>
+        /// <param name="o"></param>
         public delegate void __onHTTPSuccesses(object o);
         public __onHTTPSuccesses OnHTTPSuccesses;
+
+        /// <summary>
+        /// this fires when the page loads successfully
+        /// </summary>
+        /// <param name="o"></param>
+        public delegate void __onLoginSuccess(object o);
+        public __onLoginSuccess OnLoginSuccess;
 
 
         protected HttpClientHandler _webHandler;
@@ -123,6 +140,20 @@ namespace MySqlDI
             WriteLineToLog("Server " + Name + " Inizalized!");
         }
 
+
+        /// <summary>
+        /// estimates the current bandwith used
+        /// </summary>
+        /// <param name="page"></param>
+        private void UpdateUsedBandwidth(string page)
+        {
+            //estimate the amount of bandwith used
+            //this estimation does not include everything
+            int estimatedPageSize = page.Length * 8; //saying that each char is a byte
+            _bandwidthUsed += estimatedPageSize; //update the bandwith used for this class
+            _appBandwidthUsed += estimatedPageSize; //update the total bandwith used by the app for all webrequests
+        }
+
         /// <summary>
         /// creates a http request
         /// </summary>
@@ -131,12 +162,15 @@ namespace MySqlDI
         /// <returns></returns>
         public HttpRequestMessage CreateWebRequest(string address, HttpMethod method)
         {
-
-            
             return new HttpRequestMessage(method, address);
             //set the address
         }
 
+        /// <summary>
+        /// logs the user in to the session
+        /// </summary>
+        /// <param name="username">the username to login with</param>
+        /// <returns></returns>
         public virtual async Task<bool> Login(string username)
         {
             Dictionary<string, string> data = new Dictionary<string, string>()
@@ -144,7 +178,7 @@ namespace MySqlDI
                 {"username", username },
             };
             _webRequest.BaseAddress = new Uri(_serverAddress);
-            return await SendData(_serverAddress, HttpMethod.Post, data, RequestType.Connect);
+            return await SendData(_serverAddress, HttpMethod.Post, data, RequestType.Login, null);
         }
 
         
@@ -152,13 +186,13 @@ namespace MySqlDI
         /// this is run when the request was compleated sucessfully
         /// </summary>
         /// <param name="result"></param>
-        protected void OnRequestFullfulled(HttpResponseMessage result)
+        protected void OnRequestFullfulled(HttpResponseMessage result, object mydata)
         {
             try
             {
                 result.EnsureSuccessStatusCode(); //make sure there is a result
 
-                if (_requestType == RequestType.Connect) //if we were trying to connect to the server
+                if (_requestType == RequestType.Login) //if we were trying to connect to the server
                 {
                     if (_isConnected) //if we are not connect
                     {
@@ -171,15 +205,15 @@ namespace MySqlDI
                     {
                         _isConnected = true; //sucess
                         WriteLineToLog("Connected to " + Name);
-                        if (OnHTTPSuccesses != null)
-                            OnHTTPFailure(_log);
+                        if (OnLoginSuccess != null)
+                            OnLoginSuccess(_log);
                     }
 
                     _waitingForRequest = false;
                     return; //exit as we dont need to decode the page we have connect to
                 }
                
-                PostDecodePage(result);
+                PreDecodePage(result, mydata);
                 
             }
             catch (Exception x)
@@ -191,35 +225,63 @@ namespace MySqlDI
             _waitingForRequest = false;
         }
 
-        private async void PostDecodePage(HttpResponseMessage result)
-        {
-            object o = DecodePage(result);
-            if (OnHTTPSuccesses != null)
-                OnHTTPSuccesses(o);
+      
 
-            //check for error
-            string tmp = await result.Content.ReadAsStringAsync();
-            int i = tmp.IndexOf("#error-=#");
+        /// <summary>
+        /// start the prossesing of the receved web page
+        /// </summary>
+        /// <param name="result"></param>
+        private async void PreDecodePage(HttpResponseMessage result, object mydata)
+        {
+            string page = await result.Content.ReadAsStringAsync(); //get the page
+            UpdateUsedBandwidth(page); //update bandwith used
+
+            //now we check for errors on page
+            int i = page.IndexOf("#error-=#");
             if (i >= 0) //if error
             {
                 i += 9;
-                tmp = tmp.Substring(i, tmp.Length - i);
+                string msg = page.Substring(i, page.Length - i);
                 ErrorTypes errmsg = ErrorTypes.None;
-                if (_errorList.ContainsKey(tmp))
-                    errmsg = _errorList[tmp];
+                if (_errorList.ContainsKey(msg))
+                    errmsg = _errorList[msg];
                 else
                     errmsg = ErrorTypes.Unknownen;
-                OnPageError(errmsg);
+                OnPageError(errmsg); //through page error
+            }
+            else
+            {
+                object o = DecodePage(result, page, mydata); //decode the page
+                if (OnHTTPSuccesses != null)
+                    OnHTTPSuccesses(o);
             }
         }
 
-        public abstract object DecodePage(HttpResponseMessage responce);
+        /// <summary>
+        /// decodes the webpage
+        /// </summary>
+        /// <param name="responce">the http responce from the server</param>
+        /// <param name="htmlPage">a string containing the webpage</param>
+        /// <returns></returns>
+        public abstract object DecodePage(HttpResponseMessage responce, string htmlPage, object mydata);
       
+        /// <summary>
+        /// handles page errors
+        /// </summary>
+        /// <param name="error"></param>
         public abstract void OnPageError(ErrorTypes error);    
 
-        protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype)
+        /// <summary>
+        /// sends data to the server
+        /// </summary>
+        /// <param name="url">the url that we want to access</param>
+        /// <param name="method">the methord to send data POST or GET</param>
+        /// <param name="data">the data to send</param>
+        /// <param name="requesttype">the request type</param>
+        /// <returns></returns>
+        protected async Task<bool> SendData(string url, HttpMethod method, Dictionary<string, string> data, RequestType requesttype, object mydata)
         {
-            if (!IsConnected && requesttype != RequestType.Connect)
+            if (!IsConnected && requesttype != RequestType.Login)
             {
                 WriteLineToLog("Error you must be connected to server to send data");
                 return false; //dont send data
@@ -243,7 +305,7 @@ namespace MySqlDI
             }
             else
                 request.Content = null;
-            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead)); //get the result
+            OnRequestFullfulled(await _webRequest.SendAsync(request, HttpCompletionOption.ResponseContentRead), mydata); //get the result
             return true;
         }
 
@@ -278,6 +340,97 @@ namespace MySqlDI
             _log = "";
         }
 
+        //=======================static functoins=========================
+
+        private static string DecodeRow(string htmlPage, ref int textPointer)
+        {
+            int rowStart = htmlPage.IndexOf("<tr>", textPointer); //get row start
+            if (rowStart < 0)
+                return null;
+            int rowEnd = htmlPage.IndexOf("</tr>", rowStart);
+            textPointer = rowEnd;
+            return htmlPage.Substring(rowStart, rowEnd - rowStart);
+        }
+
+        private static List<string> GetHeaders(string row)
+        {
+            List<string> headers = new List<string>();
+            int tPointer = row.IndexOf("<th>");
+            if (tPointer >= 0)
+                tPointer += 4;
+            int ePointer;
+            while (tPointer >= 0 && tPointer < row.Length) //make sure the pointer is always in range of the string
+            {
+                ePointer = row.IndexOf("</th>", tPointer);
+
+                if (ePointer >= 0 && ePointer < row.Length)
+                {
+                    headers.Add(row.Substring(tPointer, ePointer - tPointer));
+                    tPointer = row.IndexOf("<th>", ePointer);
+                    if (tPointer >= 0)
+                        tPointer += 4;
+                }
+                else
+                    tPointer = -1;
+
+            }
+            return headers;
+        }
+
+        private static List<string> GetCells(string row)
+        {
+            List<string> cells = new List<string>();
+            int tPointer = row.IndexOf("<td>");
+            if (tPointer >= 0)
+                tPointer += 4;
+            int ePointer;
+            while (tPointer >= 0 && tPointer < row.Length) //make sure the pointer is always in range of the string
+            {
+                ePointer = row.IndexOf("</td>", tPointer);
+
+                if (ePointer >= 0 && ePointer < row.Length)
+                {
+                    cells.Add(row.Substring(tPointer, ePointer - tPointer));
+                    tPointer = row.IndexOf("<td>", ePointer);
+                    if (tPointer >= 0)
+                        tPointer += 4;
+                }
+                else
+                    tPointer = -1;
+
+            }
+            return cells;
+        }
+
+        protected static Dictionary<string, List<string>> DecodeMySqlDatabase(string page)
+        {
+            Dictionary<string, List<string>> data = new Dictionary<string, List<string>>();
+
+            int textPointer = 0; //keeps track of the rows
+
+            string row = DecodeRow(page,ref textPointer);
+
+            List<string> headers = GetHeaders(row);
+
+            foreach (string str in headers)
+                data.Add(str, new List<string>()); //add all the headers
+
+            List<string> tableData = new List<string>();
+            while (textPointer >= 0 && textPointer < page.Length)
+            {
+                tableData.Clear();
+                row = DecodeRow(page, ref textPointer); //decode next row
+                if (row == null)
+                    return data;
+                tableData = GetCells(row);
+
+                for (int i =0; i < tableData.Count; i++)
+                {
+                    data[headers[i]].Add(tableData[i]); //add the data
+                }
+            }
+            return data;
+        }
     }
 
 
